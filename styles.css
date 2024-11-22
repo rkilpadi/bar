@@ -1,0 +1,17 @@
+body {
+    background-color: #505050;
+}
+
+#progress-bar {
+    width: 100%;
+    background-color: #f3f3f3;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    height: 30px;
+}
+
+#progress {
+    height: 100%;
+    text-align: center;
+}
+
