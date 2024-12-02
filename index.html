@@ -1,4 +1,3 @@
-{{ block "index" . }}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -10,32 +9,22 @@
     <script src="https://unpkg.com/htmx.org@2.0.3" 
         integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" 
         crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 
 <body>
     <h1>Presentation Bar</h1>
 
-    <label for="increment">Confidence level:
-        <input id="increment" name="increment" type="range" value="10" min="0" max="100" step="1">
+    <label for="confidence">Confidence level:
+        <input id="confidence" name="confidence" type="range" value="10" min="0" max="100" step="1">
     </label>
 
-    <button hx-post="/vote" hx-target="#bar" hx-include="[name=increment]">
+    <button hx-post="/vote" hx-target="#bar" hx-trigger="click" hx-include="[name=confidence]">
         Vote
     </button>
 
-    <div id="bar">
-        {{ template "bar" . }}
+    <div id="bar" hx-get="bar" hx-trigger="load" hx-ext="sse" sse-connect="/barstream" sse-swap="message">
+        <p>Loading...</p>
     </div>
-
 </body>
-{{ end }}
 
-{{ block "bar" . }}
-    <div id="progress-bar">
-        <div id="progress" style="background-color: hsl({{ .Avg }}, 70%, 50%); width: {{ .Avg }}%;">
-            {{ .Avg }}%
-        </div>
-    </div>
-
-    <p>Total votes: {{ .Votes }}</p>
-{{ end }}

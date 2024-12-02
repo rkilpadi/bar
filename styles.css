@@ -13,5 +13,6 @@ body {
 #progress {
     height: 100%;
     text-align: center;
+    transition: width 1s ease-in-out, background-color 1s ease-in-out;
 }
 
