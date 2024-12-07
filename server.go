@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +17,8 @@ const redisAddr = "localhost:6379"
 const serverPort = ":3000"
 
 type Data struct {
-    Avg float64 
-    NumVotes int
+    Avg float64   `redis:"avg"`
+    NumVotes int64  `redis:"numVotes"`
 }
 
 func initializeRedis() (context.Context, *redis.Client, error) {
@@ -32,11 +33,7 @@ func initializeRedis() (context.Context, *redis.Client, error) {
         return nil, nil, err
     }
 
-    if err := r.Set(ctx, "avg", 0, 0).Err(); err != nil {
-        return nil, nil, err
-    }
-
-    if err := r.Set(ctx, "numVotes", 0, 0).Err(); err != nil {
+    err := r.HSet(ctx, "session:test", "avg", "0", "numVotes", "0").Err(); if err != nil {
         return nil, nil, err
     }
 
@@ -58,8 +55,20 @@ func formatBar(data Data) string {
 
 func main() {
     e := echo.New()
+    e.HTTPErrorHandler = func(err error, c echo.Context) {
+        code := 500
+        if he, ok := err.(*echo.HTTPError); ok {
+            code = he.Code
+        }
+        c.Logger().Error(err)
+        if code >= 500 {
+            c.JSON(code, "Something went wrong")
+        } else {
+            c.JSON(code, err)
+        }
+    }
 
-    ctx, r, err := initializeRedis(); if err != nil {
+    rctx, r, err := initializeRedis(); if err != nil {
         e.Logger.Fatal(err)
     }
 
@@ -68,64 +77,46 @@ func main() {
     e.File("/", "index.html")
 
     e.GET("/bar", func(c echo.Context) error {
-        avg, err := r.Get(ctx, "avg").Float64(); if err != nil {
-            return err
+        var data Data
+
+        err := r.HGetAll(rctx, "session:test").Scan(&data); if err != nil {
+            return echo.NewHTTPError(500, err)
         }
 
-        numVotes, err := r.Get(ctx, "numVotes").Int(); if err != nil {
-            return err
-        }
-
-        data := Data{Avg: avg, NumVotes: numVotes}
-        barHTML := formatBar(data)
-
-        return c.HTML(200, barHTML)
+        return c.HTML(200, formatBar(data))
     })
 
     e.POST("/vote", func(c echo.Context) error {
         vote, err := strconv.ParseFloat(c.FormValue("confidence"), 64); if err != nil {
-            return err
+            return echo.NewHTTPError(400, fmt.Sprintf("Error parsing confidence: %v", err))
         }
         if vote < 0 || vote > 100 {
             return echo.NewHTTPError(400, fmt.Sprintf("Invalid confidence: %f", vote))
         }
 
-        avg, err := r.Get(ctx, "avg").Float64(); if err != nil {
-            return err
+        scriptBytes, err := os.ReadFile("vote.lua"); if err != nil {
+            echo.NewHTTPError(500, fmt.Sprintf("Failed to read script: %v", err))
+        }
+        result, err := redis.NewScript(string(scriptBytes)).Run(rctx, r, 
+            []string{"session:test"}, 
+            c.RealIP(), vote,
+        ).StringSlice()
+        if err != nil {
+            return echo.NewHTTPError(500, fmt.Sprintf("Error running script: %v", err))
+        }
+        if len(result) != 2 {
+            return echo.NewHTTPError(500, "Expected script to return result of length 2")
         }
 
-        numVotes, err := r.Get(ctx, "numVotes").Int(); if err != nil {
-            return err
+        newAvg, err := strconv.ParseFloat(result[0], 64); if err != nil {
+            return echo.NewHTTPError(500, err)
+        }
+        totalVotes, err := strconv.ParseInt(result[1], 10, 64); if err != nil {
+            return echo.NewHTTPError(500, err)
         }
 
-        ip := c.RealIP()
-        voted, err := r.HExists(ctx, "ips", ip).Result(); if err != nil {
-            return err
-        }
-
-        if voted {
-            oldVote, err := r.HGet(ctx, "ips", ip).Float64(); if err != nil {
-                return err
-            }
-            avg = (avg * float64(numVotes) - oldVote + vote) / float64(numVotes)
-        } else {
-            err = r.Incr(ctx, "numVotes").Err(); if err != nil {
-                return err
-            }
-            avg = (avg * float64(numVotes) + vote) / float64(numVotes + 1)
-            numVotes++
-        }
-
-        err = r.HSet(ctx, "ips", ip, vote).Err(); if err != nil {
-            return err
-        }
-
-        err = r.Set(ctx, "avg", avg, 0).Err(); if err != nil {
-            return err
-        }
-
-        html := formatBar(Data{Avg: avg, NumVotes: numVotes})
-        err = r.Publish(ctx, "bar", html).Err(); if err != nil {
+        html := formatBar(Data{newAvg, totalVotes})
+        err = r.Publish(rctx, "bar", html).Err(); if err != nil {
             return err
         }
 
@@ -139,7 +130,7 @@ func main() {
         c.Response().Header().Set("Cache-Control", "no-cache")
         c.Response().Header().Set("Connection", "keep-alive")
 
-        pubsub := r.Subscribe(ctx, "bar")
+        pubsub := r.Subscribe(rctx, "bar")
         defer pubsub.Close()
 
         ticker := time.NewTicker(time.Second)
@@ -150,7 +141,7 @@ func main() {
                 fmt.Printf("Disconnected %s\n", c.Request().RemoteAddr)
                 return nil
             case <-ticker.C:
-                msg, err := pubsub.ReceiveMessage(ctx); if err != nil {
+                msg, err := pubsub.ReceiveMessage(rctx); if err != nil {
                     return err
                 }
                 fmt.Fprintf(c.Response(), "data: %s\n\n", msg.Payload)
