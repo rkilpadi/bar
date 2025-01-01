@@ -1,0 +1,8 @@
+{{range $index, $question := .Questions}}
+    <p 
+        {{if eq $index $.LastIndex}} 
+            hx-get="/question?page={{$.NextPage}}" hx-trigger="revealed" hx-swap="afterend"
+        {{end}}
+    >{{$question}}</p>
+{{end}}
+

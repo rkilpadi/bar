@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="styles.css"/> 
+    <title>Presentation Bar</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4" 
+        integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" 
+        crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+</head>
+
+<body hx-ext="sse" sse-connect="/sse">
+    <h1>Presentation Bar</h1>
+
+    <form hx-post="/vote" hx-target="#bar" hx-include="#confidence">
+        <label for="confidence">Confidence level:
+            <input id="confidence" name="confidence" type="range" value="10" min="0" max="100" step="1">
+        </label>
+
+        <button> Vote </button>
+    </form>
+
+    <div id="bar" hx-get="bar" hx-trigger="load" sse-swap="vote">
+        <p>Loading...</p>
+    </div>
+
+    <h2>Ask a Question</h3>
+
+    <form hx-post="/question" hx-swap="none" hx-trigger="submit throttle:1s" hx-include="#question-input"
+          hx-on::after-request="if(event.detail.successful) this.reset()">
+        <input type="text" id="question-input" name="question">
+        <button>Send</button>
+    </form>
+
+    <div hx-get="/question?page=1" hx-trigger="load" hx-swap="afterbegin" sse-swap="question"></div>
+</body>
+
