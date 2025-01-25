@@ -1,0 +1,4 @@
+<div class="question" hx-swap="delete" sse-swap="deleteQuestion">
+    <p>{{$.Question}}</p>
+    <button hx-delete="/question?delete={{$.Question}}" hx-include="closest p">✖</button>
+</div>

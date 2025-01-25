@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"strconv"
+    "strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -29,10 +30,10 @@ func (h *Handler) GetQuestions(c echo.Context) error {
 
     questions, err := h.Redis.ZRevRange(h.RequestContext, "questions", pageLength * (page - 1), page * pageLength - 1).Result()
     if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
 
-    return c.Render(200, "questions.html", questionsData(questions, page))
+    return c.Render(200, "questions-block.html", questionsData(questions, page))
 }
 
 func (h *Handler) AskQuestion(c echo.Context) error {
@@ -47,13 +48,32 @@ func (h *Handler) AskQuestion(c echo.Context) error {
     err := h.Redis.ZAdd(h.RequestContext, "questions", 
         redis.Z{Member: questionText, Score: float64(time.Now().Unix())},
     ).Err(); if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
 
-    payload := fmt.Sprintf("event: question\ndata: <p>%s</p>\n\n", questionText)
+    var html strings.Builder
+    err = h.Renderer.Render(&html, "question.html", map[string]interface{}{"Question": questionText}, c); if err != nil {
+        return echo.NewHTTPError(500, fmt.Sprintf("Error rendering template: %v", err))
+    }
+
+    payload := fmt.Sprintf("event: question\ndata: %s\n\n", strings.ReplaceAll(html.String(), "\n", ""))
     err = h.Redis.Publish(h.RequestContext, "sse", payload).Err(); if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
     return c.NoContent(202)
+}
+
+func (h *Handler) DeleteQuestion(c echo.Context) error {
+    question := c.QueryParam("delete")
+
+    err := h.Redis.ZRem(h.RequestContext, "questions", question).Err(); if err != nil {
+        return echo.NewHTTPError(503, err)
+    }
+
+    payload := fmt.Sprintf("event: deleteQuestion\ndata: %s\n\n", question)
+    err = h.Redis.Publish(h.RequestContext, "sse", payload).Err(); if err != nil {
+        return echo.NewHTTPError(503, err)
+    }
+    return c.HTML(200, "")
 }
 

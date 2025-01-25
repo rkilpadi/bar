@@ -31,6 +31,7 @@ func main() {
 
     e.GET("/question", h.GetQuestions)
     e.POST("/question", h.AskQuestion)
+    e.DELETE("/question", h.DeleteQuestion)
 
     e.GET("/sse", h.SseHandler)
 

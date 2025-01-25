@@ -20,11 +20,11 @@ func barData(confidence float64, voteCount int) map[string]interface{} {
 
 func (h *Handler) GetBar(c echo.Context) error {
     confidence, err := h.Redis.Get(h.RequestContext, "confidence").Float64(); if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
 
     voteCount, err := h.Redis.Get(h.RequestContext, "voteCount").Int(); if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
 
     return c.Render(200, "bar.html", barData(confidence, voteCount))
@@ -39,7 +39,7 @@ func (h *Handler) Vote(c echo.Context) error {
     }
 
     scriptBytes, err := os.ReadFile("db/vote.lua"); if err != nil {
-        echo.NewHTTPError(500, fmt.Sprintf("Failed to read script: %v", err))
+        return echo.NewHTTPError(500, fmt.Sprintf("Failed to read script: %v", err))
     }
     result, err := redis.NewScript(string(scriptBytes)).Run(h.RequestContext, h.Redis, []string{}, c.RealIP(), vote).StringSlice()
     if err != nil {
@@ -63,7 +63,7 @@ func (h *Handler) Vote(c echo.Context) error {
 
     payload := fmt.Sprintf("event: vote\ndata: %s\n\n", strings.ReplaceAll(html.String(), "\n", ""))
     err = h.Redis.Publish(h.RequestContext, "sse", payload).Err(); if err != nil {
-        return echo.NewHTTPError(500, err)
+        return echo.NewHTTPError(503, err)
     }
 
     return c.HTML(200, html.String())

@@ -1,8 +1,11 @@
 {{range $index, $question := .Questions}}
-    <p 
+<div class="question" hx-swap="delete" sse-swap="deleteQuestion">
+    <p
         {{if eq $index $.LastIndex}} 
             hx-get="/question?page={{$.NextPage}}" hx-trigger="revealed" hx-swap="afterend"
         {{end}}
     >{{$question}}</p>
+    <button hx-delete="/question?delete={{$question}}" hx-include="closest p">✖</button>
+</div>
 {{end}}
 
